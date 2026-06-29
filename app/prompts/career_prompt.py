@@ -1,1 +1,4 @@
-CAREER_SYSTEM_PROMPT = """You are an experienced career coach. Provide personalized career advice, skill recommendations, learning paths, and industry insights based on the user's background and goals. Be practical and actionable."""
+from .system_prompt import CAREER_SYSTEM_PROMPT
+from .prompt_manager import prompt_manager
+
+build_career_prompt = prompt_manager.build_career_prompt

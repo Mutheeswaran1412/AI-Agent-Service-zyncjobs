@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class ConversationMemory:
@@ -8,7 +8,7 @@ class ConversationMemory:
     def add(self, user_id: str, entry: dict):
         if user_id not in self._store:
             self._store[user_id] = []
-        entry["timestamp"] = datetime.utcnow().isoformat()
+        entry["timestamp"] = datetime.now(timezone.utc).isoformat()
         self._store[user_id].append(entry)
 
     def get_history(self, user_id: str, limit: int = 20) -> list[dict]:

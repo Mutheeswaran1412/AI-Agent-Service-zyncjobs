@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+from app.services import resume_service
 
 router = APIRouter()
 
@@ -11,32 +12,37 @@ class ImproveRequest(BaseModel):
 
 class ImproveResponse(BaseModel):
     improved_resume: str
-    ats_score: int
+    ats_score: int | None
     summary: str
     skills_suggested: list[str]
+    grammar_issues: list[str]
 
 
-@router.post("/improve")
-def improve_resume(request: ImproveRequest):
-    return ImproveResponse(
-        improved_resume="Improved resume content here...",
-        ats_score=75,
-        summary="Your resume is well structured.",
-        skills_suggested=["Python", "FastAPI", "Machine Learning"],
+@router.post("/improve", response_model=ImproveResponse)
+async def improve_resume(request: ImproveRequest):
+    return await resume_service.improve_resume(
+        resume_text=request.resume_text,
+        job_description=request.job_description,
     )
 
 
+class ParseRequest(BaseModel):
+    resume_text: str
+
+
 @router.post("/parse")
-def parse_resume(resume_text: str):
-    return {
-        "name": "John Doe",
-        "email": "john@example.com",
-        "skills": ["Python", "FastAPI"],
-        "experience": [],
-        "education": [],
-    }
+def parse_resume(request: ParseRequest):
+    return resume_service.parse_resume(resume_text=request.resume_text)
+
+
+class ATSScoreRequest(BaseModel):
+    resume_text: str
+    job_description: str
 
 
 @router.post("/ats-score")
-def ats_score(resume_text: str, job_description: str):
-    return {"score": 75, "keywords_found": [], "keywords_missing": []}
+def ats_score(request: ATSScoreRequest):
+    return resume_service.ats_score(
+        resume_text=request.resume_text,
+        job_description=request.job_description,
+    )

@@ -1,6 +1,8 @@
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Optional
 from app.llm.router import router as llm_router
+from app.knowledge.knowledge_base import knowledge_base
 from app.utils.logger import logger
 
 
@@ -16,12 +18,25 @@ class BaseAgent(ABC):
 
     async def run(self, query: str, user_id: Optional[str] = None, **kwargs) -> dict:
         logger.info(f"Agent {self.name} processing query")
-        result = await self.execute(query, user_id=user_id, **kwargs)
-        return result
+        return await self.execute(query, user_id=user_id, **kwargs)
 
     @abstractmethod
     async def execute(self, query: str, user_id: Optional[str] = None, **kwargs) -> dict:
         pass
 
-    def generate(self, prompt: str, system: Optional[str] = None, **kwargs) -> str:
-        return self.llm.generate(prompt, system=system or self.system_prompt(), **kwargs)
+    async def generate(self, prompt: str, system: Optional[str] = None, **kwargs) -> str:
+        return await asyncio.to_thread(
+            self.llm.generate, prompt, system=system or self.system_prompt(), **kwargs
+        )
+
+    def retrieve_context(self, query: str, max_chars: int = 1500) -> str:
+        context = knowledge_base.build_context(query, max_chars=max_chars)
+        if context:
+            logger.info(f"RAG context retrieved ({len(context)} chars)")
+        return context
+
+    def augment_with_context(self, prompt: str, query: str) -> str:
+        context = self.retrieve_context(query)
+        if context:
+            return f"{prompt}\n\nRelevant Knowledge:\n{context}"
+        return prompt

@@ -2,6 +2,15 @@ import re
 from .base_tool import BaseTool
 
 
+_STOP_WORDS = {
+    "the", "a", "an", "and", "or", "in", "of", "to", "for",
+    "with", "on", "at", "by", "is", "are", "be", "will", "we",
+    "our", "your", "this", "that", "has", "have", "been", "was",
+    "were", "but", "not", "all", "can", "may", "also", "very",
+    "just", "its", "than", "then", "each", "any", "per", "etc",
+}
+
+
 class ATSTool(BaseTool):
     def __init__(self):
         super().__init__(
@@ -13,18 +22,19 @@ class ATSTool(BaseTool):
         resume_lower = resume_text.lower()
         jd_lower = job_description.lower()
 
-        # extract keywords from job description
-        stop_words = {"the", "a", "an", "and", "or", "in", "of", "to", "for", "with", "on", "at", "by", "is", "are", "be", "will", "we", "our", "your", "this", "that"}
-        words = re.findall(r'\b[a-z]{3,}\b', jd_lower)
-        keywords = set(w for w in words if w not in stop_words)
+        resume_keywords = self._extract_keywords(resume_lower)
+        jd_keywords = self._extract_keywords(jd_lower)
 
-        matching = [k for k in keywords if k in resume_lower]
-        missing = [k for k in keywords if k not in resume_lower]
-
-        score = int((len(matching) / max(len(keywords), 1)) * 100) if keywords else 0
+        matching = sorted(jd_keywords & resume_keywords)
+        missing = sorted(jd_keywords - resume_keywords)
+        score = int((len(matching) / max(len(jd_keywords), 1)) * 100) if jd_keywords else 0
 
         return {
-            "score": score,
-            "matching_keywords": sorted(matching)[:20],
-            "missing_keywords": sorted(missing)[:20],
+            "score": min(score, 100),
+            "matching_keywords": matching[:25],
+            "missing_keywords": missing[:25],
         }
+
+    def _extract_keywords(self, text: str) -> set:
+        words = re.findall(r'\b[a-z]{3,}\b', text)
+        return set(w for w in words if w not in _STOP_WORDS)

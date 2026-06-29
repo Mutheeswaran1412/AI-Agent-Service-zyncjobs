@@ -2,37 +2,53 @@ import re
 from .base_tool import BaseTool
 
 
+_TYPOS = {
+    "responsiblities": "responsibilities",
+    "managment": "management",
+    "experiance": "experience",
+    "acheivement": "achievement",
+    "recieved": "received",
+    "tehnical": "technical",
+    "developped": "developed",
+    "programing": "programming",
+    "collaborate": "collaborate",
+    "impletement": "implement",
+    "maintainance": "maintenance",
+    "comunicate": "communicate",
+    "analize": "analyze",
+    "orginization": "organization",
+    "departm ent": "department",
+}
+
+
 class GrammarTool(BaseTool):
     def __init__(self):
         super().__init__(
             name="grammar_tool",
-            description="Checks resume text for common grammar and spelling issues",
+            description="Checks text for common grammar and spelling issues",
         )
 
-    def run(self, text: str) -> list[str]:
+    def run(self, text: str) -> list[dict]:
         issues = []
 
-        # check for double spaces
         if re.search(r'  ', text):
-            issues.append("Double spaces found")
+            issues.append({"type": "spacing", "message": "Double spaces found", "severity": "low"})
 
-        # check for common typos
-        typos = {
-            "responsiblities": "responsibilities",
-            "managment": "management",
-            "experiance": "experience",
-            "acheivement": "achievement",
-            "recieved": "received",
-            "tehnical": "technical",
-            "developped": "developed",
-        }
-        for typo, correction in typos.items():
-            if re.search(rf'\b{typo}\b', text, re.IGNORECASE):
-                issues.append(f"'{typo}' should be '{correction}'")
+        for typo, correction in _TYPOS.items():
+            for match in re.finditer(rf'\b{typo}\b', text, re.IGNORECASE):
+                issues.append({
+                    "type": "typo",
+                    "message": f"'{match.group()}' should be '{correction}'",
+                    "severity": "medium",
+                    "position": match.start(),
+                })
 
-        # check for passive voice indicators
-        passive = re.findall(r'\b(was|were|been|being)\s+\w+ed\b', text, re.IGNORECASE)
-        if passive:
-            issues.append(f"Consider reducing passive voice ({len(passive)} instances)")
+        for match in re.finditer(r'\b(was|were|been|being)\s+\w+ed\b', text, re.IGNORECASE):
+            issues.append({
+                "type": "passive_voice",
+                "message": f"Passive voice: '{match.group()}' — consider active voice",
+                "severity": "low",
+                "position": match.start(),
+            })
 
         return issues

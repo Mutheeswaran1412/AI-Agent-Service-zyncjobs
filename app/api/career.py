@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+from app.services import career_service
 
 router = APIRouter()
 
@@ -7,13 +8,13 @@ router = APIRouter()
 class CareerAdviceRequest(BaseModel):
     current_role: str
     target_role: str
-    skills: list[str]
+    skills: list[str] = []
 
 
 @router.post("/advice")
-def career_advice(request: CareerAdviceRequest):
-    return {
-        "recommended_skills": ["System Design", "Leadership"],
-        "learning_path": ["Course A", "Course B"],
-        "timeline": "6 months",
-    }
+async def career_advice(request: CareerAdviceRequest):
+    return await career_service.get_career_advice(
+        current_role=request.current_role,
+        target_role=request.target_role,
+        skills=request.skills,
+    )

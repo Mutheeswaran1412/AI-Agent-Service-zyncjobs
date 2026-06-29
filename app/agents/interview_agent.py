@@ -1,6 +1,10 @@
 from typing import Optional
 from .base_agent import BaseAgent
-from app.prompts.job_prompt import INTERVIEW_SYSTEM_PROMPT
+from app.prompts.prompt_manager import prompt_manager
+from app.prompts.system_prompt import INTERVIEW_SYSTEM_PROMPT
+from app.tools.skill_extractor import SkillExtractorTool
+from app.tools.keyword_tool import KeywordTool
+from app.memory.memory_manager import memory
 
 
 class InterviewAgent(BaseAgent):
@@ -9,6 +13,8 @@ class InterviewAgent(BaseAgent):
             name="interview_agent",
             description="Generates interview questions for any role",
         )
+        self.skill_extractor = SkillExtractorTool()
+        self.keyword_tool = KeywordTool()
 
     def system_prompt(self) -> str:
         return INTERVIEW_SYSTEM_PROMPT
@@ -18,13 +24,21 @@ class InterviewAgent(BaseAgent):
         skills = kwargs.get("skills", [])
         level = kwargs.get("experience_level", "mid")
 
-        prompt = f"""
-Generate interview questions for:
-Role: {job_title}
-Skills: {', '.join(skills)}
-Level: {level}
+        if not skills and user_id:
+            skills = memory.get_skills(user_id)
 
-Additional Context: {query}
-"""
-        questions = self.generate(prompt, system=INTERVIEW_SYSTEM_PROMPT)
+        detected = self.skill_extractor.run(job_title + " " + query)
+        all_skills = list(dict.fromkeys(list(skills) + detected))
+
+        prompt = prompt_manager.build_interview_prompt(
+            job_title, all_skills, level,
+            f"{query}\nKey areas: {self.keyword_tool.run(job_title, 5)}"
+        )
+        prompt = self.augment_with_context(prompt, query)
+        questions = await self.generate(prompt, system=INTERVIEW_SYSTEM_PROMPT)
+
+        if user_id:
+            memory.store_message(user_id, "user", query)
+            memory.store_message(user_id, "assistant", questions[:200])
+
         return {"questions": questions}

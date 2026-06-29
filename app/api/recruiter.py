@@ -1,20 +1,20 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+from app.services import recruiter_service
 
 router = APIRouter()
 
 
 class JDRequest(BaseModel):
     title: str
-    experience_level: str
-    skills: list[str]
+    experience_level: str = ""
+    skills: list[str] = []
 
 
 @router.post("/generate-jd")
-def generate_job_description(request: JDRequest):
-    return {
-        "job_title": request.title,
-        "description": "We are looking for...",
-        "responsibilities": ["Build APIs", "Write tests"],
-        "requirements": ["3+ years experience"],
-    }
+async def generate_job_description(request: JDRequest):
+    return await recruiter_service.generate_jd(
+        title=request.title,
+        experience_level=request.experience_level,
+        skills=request.skills,
+    )

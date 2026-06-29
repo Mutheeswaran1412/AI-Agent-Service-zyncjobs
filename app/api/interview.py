@@ -1,22 +1,20 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+from app.services import interview_service
 
 router = APIRouter()
 
 
 class InterviewRequest(BaseModel):
     job_title: str
-    skills: list[str]
-    experience_level: str
+    skills: list[str] = []
+    experience_level: str = "mid"
 
 
 @router.post("/questions")
-def generate_questions(request: InterviewRequest):
-    return {
-        "questions": [
-            "Explain polymorphism.",
-            "Describe REST vs GraphQL.",
-            "How do you handle errors in Python?",
-        ],
-        "categories": ["Technical", "Behavioral"],
-    }
+async def generate_questions(request: InterviewRequest):
+    return await interview_service.generate_questions(
+        job_title=request.job_title,
+        skills=request.skills,
+        experience_level=request.experience_level,
+    )

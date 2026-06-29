@@ -1,6 +1,10 @@
 from typing import Optional
 from .base_agent import BaseAgent
-from app.prompts.job_prompt import JD_SYSTEM_PROMPT
+from app.prompts.prompt_manager import prompt_manager
+from app.prompts.system_prompt import JD_SYSTEM_PROMPT
+from app.tools.skill_extractor import SkillExtractorTool
+from app.tools.keyword_tool import KeywordTool
+from app.memory.memory_manager import memory
 
 
 class RecruiterAgent(BaseAgent):
@@ -9,6 +13,8 @@ class RecruiterAgent(BaseAgent):
             name="recruiter_agent",
             description="Generates job descriptions and helps recruiters",
         )
+        self.skill_extractor = SkillExtractorTool()
+        self.keyword_tool = KeywordTool()
 
     def system_prompt(self) -> str:
         return JD_SYSTEM_PROMPT
@@ -18,13 +24,19 @@ class RecruiterAgent(BaseAgent):
         experience = kwargs.get("experience_level", "")
         skills = kwargs.get("skills", [])
 
-        prompt = f"""
-Generate a job description for:
-Title: {title}
-Experience Level: {experience}
-Skills: {', '.join(skills)}
+        detected = self.skill_extractor.run(title + " " + query)
+        all_skills = list(dict.fromkeys(list(skills) + detected))
 
-Additional Context: {query}
-"""
-        jd = self.generate(prompt, system=JD_SYSTEM_PROMPT)
-        return {"job_description": jd}
+        prompt = prompt_manager.build_jd_prompt(title, experience, all_skills, query)
+        prompt = self.augment_with_context(prompt, query)
+        jd = await self.generate(prompt, system=JD_SYSTEM_PROMPT)
+
+        if user_id:
+            memory.store_message(user_id, "user", query)
+            memory.store_message(user_id, "assistant", jd[:200])
+
+        return {
+            "job_description": jd,
+            "suggested_skills": all_skills,
+            "keywords": self.keyword_tool.run(title + " " + " ".join(all_skills), 10),
+        }

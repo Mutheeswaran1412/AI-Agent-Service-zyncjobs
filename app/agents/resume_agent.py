@@ -1,15 +1,13 @@
 from typing import Optional
 from .base_agent import BaseAgent
-from app.prompts.resume_prompt import (
-    IMPROVE_SYSTEM_PROMPT,
-    ATS_SCORE_SYSTEM_PROMPT,
-    SUMMARY_SYSTEM_PROMPT,
-    SKILLS_SYSTEM_PROMPT,
-    COVER_LETTER_SYSTEM_PROMPT,
-)
+from app.prompts.prompt_manager import prompt_manager
+from app.prompts.system_prompt import RESUME_SYSTEM_PROMPT, SUMMARY_SYSTEM_PROMPT, SKILLS_SYSTEM_PROMPT
 from app.tools.resume_parser import ResumeParserTool
 from app.tools.ats_tool import ATSTool
 from app.tools.grammar_tool import GrammarTool
+from app.tools.skill_extractor import SkillExtractorTool
+from app.tools.summary_tool import SummaryTool
+from app.memory.memory_manager import memory
 from app.utils.logger import logger
 
 
@@ -22,52 +20,52 @@ class ResumeAgent(BaseAgent):
         self.parser = ResumeParserTool()
         self.ats = ATSTool()
         self.grammar = GrammarTool()
+        self.skill_extractor = SkillExtractorTool()
+        self.summary_tool = SummaryTool()
 
     def system_prompt(self) -> str:
-        return IMPROVE_SYSTEM_PROMPT
+        return RESUME_SYSTEM_PROMPT
 
     async def execute(self, query: str, user_id: Optional[str] = None, **kwargs) -> dict:
         resume_text = kwargs.get("resume_text", "")
         job_description = kwargs.get("job_description", "")
 
-        # 1. Parse resume
-        parsed = self.parser.run(resume_text)
-        logger.info("ResumeAgent parsed resume", sections=list(parsed.keys()))
+        if not resume_text and user_id:
+            resume_text = memory.get_resume(user_id).get("raw", "")
 
-        # 2. Grammar check
+        parsed = self.parser.run(resume_text)
         grammar_issues = self.grammar.run(resume_text)
 
-        # 3. ATS score if job description provided
         ats_result = {}
         if job_description:
             ats_result = self.ats.run(resume_text, job_description)
-            logger.info("ResumeAgent ATS score", score=ats_result.get("score"))
 
-        # 4. Generate improved resume
-        improve_prompt = f"""
-Original Resume:
-{resume_text}
+        detected_skills = self.skill_extractor.extract_from_resume(parsed)
 
-Parsed Sections: {parsed}
-Grammar Issues: {grammar_issues}
-"""
-        if ats_result:
-            improve_prompt += f"\nATS Score: {ats_result['score']}\nMissing Keywords: {ats_result.get('missing_keywords', [])}"
-
-        improved = self.generate(improve_prompt, system=IMPROVE_SYSTEM_PROMPT)
-
-        # 5. Generate summary
-        summary = self.generate(
-            f"Summarize this resume:\n{resume_text}",
-            system=SUMMARY_SYSTEM_PROMPT,
+        improve_prompt = prompt_manager.build_resume_prompt(
+            resume_text, parsed, grammar_issues, ats_result or None, detected_skills
         )
+        improve_prompt = self.augment_with_context(improve_prompt, query)
+        improved = await self.generate(improve_prompt, system=RESUME_SYSTEM_PROMPT)
 
-        # 6. Suggest skills
-        skills_raw = self.generate(
-            f"Suggest skills for this resume:\n{resume_text}",
-            system=SKILLS_SYSTEM_PROMPT,
+        summary = self.summary_tool.run(parsed)
+        if not summary or len(summary.split()) < 15:
+            summary_prompt = self.augment_with_context(
+                prompt_manager.build_summary_prompt(resume_text), query
+            )
+            summary = await self.generate(summary_prompt, system=SUMMARY_SYSTEM_PROMPT)
+
+        skills_prompt = self.augment_with_context(
+            prompt_manager.build_skills_prompt(resume_text, detected_skills), query
         )
-        skills_list = [s.strip() for s in skills_raw.split(",") if s.strip()]
+        skills_raw = await self.generate(skills_prompt, system=SKILLS_SYSTEM_PROMPT)
+        skills_list = list(dict.fromkeys(s.strip() for s in skills_raw.split(",") if s.strip()))
+
+        if user_id:
+            memory.store_message(user_id, "user", query)
+            memory.store_message(user_id, "assistant", improved[:200])
+            memory.store_resume(user_id, {"raw": resume_text, "parsed": parsed, "improved": improved})
+            memory.store_skills(user_id, detected_skills + skills_list)
 
         return {
             "improved_resume": improved,
@@ -75,4 +73,5 @@ Grammar Issues: {grammar_issues}
             "summary": summary,
             "skills_suggested": skills_list[:10],
             "grammar_issues": grammar_issues,
+            "detected_skills": detected_skills,
         }
